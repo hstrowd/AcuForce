@@ -2,9 +2,13 @@
 #INITAL DEVELOPMENT
 #askryl
 #https://github.com/skryl/AcuForce.git
-#Modified to transition from OmniNote to Accunote, yes a lot of notes!
-#Notes there are a few gems required:
-#namely mechanize, highline, and optsparse
+
+#bfeigin intense modifications
+#Ripped out most of AcuForce, kept the basic Acunote logic see AcunoteBase
+https://github.com/bfeigin/AcuForce.git
+
+#Major modifications to transition from OmniPlan to Accunote
+#Notes there are a few gems required see directly below :)
 
 require 'rubygems'
 require 'mechanize'
@@ -17,38 +21,11 @@ THIS_FILE = File.symlink?(__FILE__) ? File.readlink(__FILE__) : __FILE__
 THIS_DIR = File.dirname(THIS_FILE)
 DEBUG = true
 
-#Parse options to be passed in
-options ={}
-optparse = OptionParser.new do |opts|
-  opts.banner = "Usage: OmniAcuNote.rb [options] file_to_upload" 
-
-  options[:debug] = false
-  opts.on('-q', '--debug') do
-    options[:debug] = true
-  end
-
-  opts.on(%w(-h --help)) do 
-    puts "TODO with the help sorry for now!"
-  end
-end
-
-optparse.parse!
-
 module AcunoteBase
 
   @authToken = nil
   HOME_URL = "https://acunote.cashnetusa.com/"
 
-  def get_page_with_params(url, params = {}, opts = {})
-    dirty_url +='?'
-    params.each do |key,value|
-      dirty_url+=key.to_s + "=" + value.to_s + "&"
-    end
-    #TODO anything but this maybe?
-    #Lazy implementaiton i'll fix later
-    get_page(dirty_dirty_url[0..-2])
-  end
-  
   def grab_auth_token
     return @authToken if @authToken
     home_page = get_page(HOME_URL)
@@ -61,7 +38,6 @@ module AcunoteBase
   #(assuming credentials are passed in as arguments) and the page will be retrieved 
   #again. 
   def get_page(url, matcher = /.*/, retry_count = 1)
-
     begin
       page = @mech.get(url)
       if page.uri.to_s =~ matcher
@@ -84,6 +60,7 @@ module AcunoteBase
 end
 
 module AcunoteLogin
+  include AcunoteBase
 
   LOGIN_FIELDS = ['login[username]', 'login[password]']
   LOGIN_FORM_NAME = "login_form"
@@ -131,39 +108,28 @@ module AcunoteLogin
       @mech.cookie_jar.save_as(SESSION_FILE)
       @logged_in = true
     end
-    # THIS MUST RUN!!!!
-    grab_auth_token
   end
 end
 
-module AcunoteModifications
+module AcunoteWiki
+  include AcunoteBase
 
-  ATTATCHMENT_NEW_URL   = 'https://acunote.cashnetusa.com/attachments/new'
-  WIKI_EDIT_URL = proc{|proj_id, task_id| "https://acunote.cashnetusa.com/projects/#{proj_id}/wiki/#{task_id}/edit"}
-  #Not currently functional
-  def acunote_submit_attachment(file_location, issue_number, delete_after_write = false)
-    raise("NOT FULLY IMPLEMENTED")
-    add_attachment_page = get_page_with_params(ATTATCHMENT_NEW_URL ,{:issue => issue_number} )
-
-    #Hackish but screw selectors :)
-    attach_form = add_attachment_page.forms.first
-    attach_form['attachment[uploaded_data]'] = file_location
-    attach_form['attachment[description]'  ] = 'OmniPlan Meta Data for #{issue_number} DO NOT MODIFY!!!!'
-    attach_form.submit
-  end
+  WIKI_URL = proc{|proj_id, task_id| "https://acunote.cashnetusa.com/projects/#{proj_id}/wiki/#{task_id}"}
+  WIKI_EDIT_URL = proc{|proj_id, task_id| WIKI_URL.call(proj_id,task_id)+"/edit"}
 
   def acunote_update_wiki(file_location,task_id)
+    #Get the page and form
     wiki_page = get_page(WIKI_EDIT_URL.call('5208','379310'))
     wiki_dialog = wiki_page.forms_with({:name => 'wiki_dialog'}).first
+
+    #Update Text Area with the file contents
+    #TODO Add verification for this
     textarea = wiki_dialog.fields_with(:id => 'wiki_editor').first
     puts "GOT A TEXTAREA!!!" if DEBUG && textarea
     textarea.value = IO.read(file_location)
+
     wiki_dialog.submit
   end
-end
-
-module AcunoteReading
-  WIKI_GET_URL = proc{|proj_id, task_id| "https://acunote.cashnetusa.com/projects/#{proj_id}/wiki/#{task_id}"}
 
   def pull_task_wiki(issue_number, save_location = nil)
     wiki_page = get_page(WIKI_GET_URL.call('5208',issue_number))
@@ -178,61 +144,41 @@ module AcunoteReading
       File.open(save_location, 'w') {|f| f.write(pulled_data) }
     end
   end
-
 end
 
 class AcuPlan
-  require 'net/http'
-  require 'uri'
-
-  include AcunoteBase
   include AcunoteLogin
-  include AcunoteModifications
-  include AcunoteReading
-
+  include AcunoteWiki
 
   def initialize(options)
     @mech = Mechanize.new
     run_loop
   end
 
+  #Old School run loop :) 
+  #I'll make sweet param style implementation soon
   def run_loop
     puts "welcome to AcuPlan"
+    puts "param version comming soon!"
     puts "what would you like to do?"
     acunote_login
-    task_id = ask("Task ID? -OR- blank for default (recommended)")
-    task_id = 379310 if task_id.empty?
+    # This makes me smile and other cry?
+    while true do
+      task_id = ask("Task ID? -OR- blank for default (recommended)")
+      task_id = 379310 if task_id.empty?
 
-    task_to_run= ask("What would you like to do?\nu - Update metaTask with file\n r - Read MetaWiki\nx - Exit")
-    case task_to_run
-    when 'r'
-      save_location = ask("Where would you like to save the output? blank for STDOUT"
-      pull_task_wiki(task_id,save_location)
-    when 'u'
-      file_location= ask("Where is the file (csv) you'd like to upload?")
-      acunote_update_wiki(file_location, task_id)
-    when 'x'
-      exit(0)
+      task_to_run= ask("What would you like to do?\nu - Update metaTask with file\n r - Read MetaWiki\nx - Exit")
+      case task_to_run
+      when 'r'
+        save_location = ask("Where would you like to save the output? blank for STDOUT"
+        pull_task_wiki(task_id,save_location)
+      when 'u'
+        file_location= ask("Where is the file (csv) you'd like to upload?")
+        acunote_update_wiki(file_location, task_id)
+      when 'x'
+        exit(0)
+      end
     end
-
-
-    
-    #####    UPDTAE WIKI
-    #file_location =
-    #  if DEBUG
-    #    '/Users/bfeigin/Desktop/Q3_2011_bfeigin_team.csv'
-    #  else
-    #    file_location = ask("File Location (to dump into the wiki)")
-    #  end
-    #
-
-    #acunote_update_wiki(file_location, task_id)
-    #######   END UPDATE WIKI
-    puts "reading the wiki for task!"
-    pull_task_wiki(379310)
-    
-
-    #acunote_submit_attachment(file_location, task_id)
   end
 end
 
