@@ -21,7 +21,7 @@ DEBUG = true
 
 module AcunoteBase
 
-  SESSION_FILE = "#{THIS_DIR}/acuPlan.session"
+  SESSION_FILE = "#{THIS_DIR}/session.acuPlan.session"
 
 
   HOME_URL = "https://acunote.cashnetusa.com/"
