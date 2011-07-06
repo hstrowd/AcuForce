@@ -68,8 +68,8 @@ module AcunoteLogin
   
 
   def get_login_info
-    username = ask("Acunote Login")
-    password = ask("Acunote(LDAP) Password") {|q| q.echo = false}
+    username = ask("Acunote Login name:")
+    password = ask("Acunote(LDAP) Password:") {|q| q.echo = false}
     {:username => username, :password => password}
   end
 
@@ -117,7 +117,7 @@ module AcunoteWiki
 
   def acunote_update_wiki(file_location,task_id)
     #Get the page and form
-    wiki_page = get_page(WIKI_EDIT_URL.call('5208','379310'))
+    wiki_page = get_page(WIKI_EDIT_URL.call('5208',task_id))
     wiki_dialog = wiki_page.forms_with({:name => 'wiki_dialog'}).first
 
     #Update Text Area with the file contents
@@ -130,7 +130,7 @@ module AcunoteWiki
   end
 
   def pull_task_wiki(issue_number, save_location = nil)
-    wiki_page = get_page(WIKI_GET_URL.call('5208',issue_number))
+    wiki_page = get_page(WIKI_URL.call('5208',issue_number))
 
     pulled_data = wiki_page.parser.xpath('/html/body/div/div[7]/div[4]/div/p').first.inner_html
 
@@ -148,7 +148,7 @@ class AcuPlan
   include AcunoteLogin
   include AcunoteWiki
 
-  def initialize(options)
+  def initialize
     @mech = Mechanize.new
     run_loop
   end
@@ -160,16 +160,17 @@ class AcuPlan
     puts "param version comming soon!"
     puts "what would you like to do?"
     acunote_login
+    
     # This makes me smile and other cry?
-    while true do
-      task_id = ask("Task ID? -OR- blank for default (recommended)")
-      #This will need to be updated by quarter?
-      task_id = 379310 if task_id.empty?
+    task_id = ask("Task ID? -OR- blank for default (recommended)")
+    #This will need to be updated by quarter?
+    task_id = 379310 if task_id.empty?
 
+    while true do
       task_to_run= ask("What would you like to do?\nu - Update metaTask with file\n r - Read MetaWiki\nx - Exit")
       case task_to_run
       when 'r'
-        save_location = ask("Where would you like to save the output? blank for STDOUT"
+        save_location = ask("Where would you like to save the output? blank for STDOUT")
         pull_task_wiki(task_id,save_location)
       when 'u'
         file_location= ask("Where is the file (csv) you'd like to upload?")
@@ -181,5 +182,5 @@ class AcuPlan
   end
 end
 
-runner = AcuPlan.new(options)
+runner = AcuPlan.new
 
