@@ -5,7 +5,7 @@
 
 #bfeigin intense modifications
 #Ripped out most of AcuForce, kept the basic Acunote logic see AcunoteBase
-https://github.com/bfeigin/AcuForce.git
+#https://github.com/bfeigin/AcuForce.git
 
 #Major modifications to transition from OmniPlan to Accunote
 #Notes there are a few gems required see directly below :)
@@ -13,9 +13,7 @@ https://github.com/bfeigin/AcuForce.git
 require 'rubygems'
 require 'mechanize'
 require 'highline/import'
-require 'optparse'
 require 'yaml'
-require 'pp'
 
 THIS_FILE = File.symlink?(__FILE__) ? File.readlink(__FILE__) : __FILE__
 THIS_DIR = File.dirname(THIS_FILE)
@@ -64,7 +62,7 @@ module AcunoteLogin
 
   LOGIN_FIELDS = ['login[username]', 'login[password]']
   LOGIN_FORM_NAME = "login_form"
-  SESSION_FILE = "#{THIS_DIR}/acuforce.session"
+  SESSION_FILE = "#{THIS_DIR}/acuPlan.session"
 
   LOGIN_URL = "https://acunote.cashnetusa.com/login"
   
@@ -165,6 +163,7 @@ class AcuPlan
     # This makes me smile and other cry?
     while true do
       task_id = ask("Task ID? -OR- blank for default (recommended)")
+      #This will need to be updated by quarter?
       task_id = 379310 if task_id.empty?
 
       task_to_run= ask("What would you like to do?\nu - Update metaTask with file\n r - Read MetaWiki\nx - Exit")

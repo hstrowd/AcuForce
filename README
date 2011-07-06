@@ -1,125 +1,36 @@
-AcuForce
-Written by: Alex Skryl (askryl@enovafinancial.com)
+Acuplan: An OmniPlan to Acunote resource 
 
-AcuForce is a heirarchial Acunote scraper with Perforce integration. It is able
-to extract Project/Sprint/Task data and present it in a parsable and/or human
-readable tree structure. It also provides support for custom or predefined regex
-filters for trimming output and creating powerful search queries.
+###############################################################################
+#                                  ACUPLAN                                    #
+###############################################################################
 
+Credit: 
+Acunote logic and page grabing taken appreciatively from:
+Alex Skryl 
+https://github.com/skryl/AcuForce
 
 Requirements:
-mechanize (gem)
+rubygems
+mechanize
+highline/import
+yaml
 
 
 ###############################################################################
 #                                  USAGE                                      #
 ###############################################################################
 
-Usage: af [options]
-    -U, --username [username]        Acunote username
-    -P, --password [password]        Acunote password
-    -p, --project p1,p2,p3           Project number/s
-    -s, --sprint s1,s2,s3            Sprint number/s
-    -i, --issue i1,i2,i3             Issue number/s
-    -c, --cl c1,c2,c3                CL number/s
-    -r, --recurse [depth]            Recursion depth
-    -f, --filter f1,f2,f3            Search string
-    -v, --verbose                    Verbose output
-    -u, --unique                     Unique output
-    -d, --dump [filename]            Dump output to yaml
-    -h, --help                       Show this message
+As of right now this is a limited functionality beta.
+So I have one of those sweet oldschool run menus instead of command line for now
+
+Right now i can upload and download a file to and from our corp acunote server, stashing the "file data" in an acunote task's wiki
+
+No versioning so, clobbering almost a certainty(feature)
 
 
-###############################################################################
-#                                  EXAMPLES                                   #
-###############################################################################
-
-Print all the (present) sprints in a project, along with sprint names, etc.
-./af -vp 5223
-
-Print all the issues in a sprint, along with issue name, owner, etc.
-./af -vs 23698
-
-Print all the CLs for a specific issue, along with their descriptions, etc.
-./af -vi 169835
-
-Print the number of the Dev and QA Sprints for this week
-./af -vp 5223 -f "sprint_description:/Dev/QA/"
-
-Print only the issues owned by askryl for a specific sprint.
-./af -vs 23698 -f "issue_owner:/askryl/"
-
-Print only the issues owned by askryl and srabiela and whose description 
-contains 'customer' for each sprint provided.
-./af -vs 23698,23681 -f "issue_owner:/askryl/srabiela/,issue_description:/address/"
-
-Print all the unique files touched by any CL in the two issues specified.
-./af -i 169439,169835 -ur2
-
-Print all the unique files touched by any CL which is part of the issue provided
-but use the predefined filter 'no_integrates' to filter results. 
-./af -i 186735 -ur2 -f "change_list_description:no_integrates" 
-
-Add some bash-fu and the above command can...
-
-Integrate all the files in all the CLs (non integration CLs) for a specific
-issue.  Note that all file paths are returned with the depot name prepended.
-colrm can be used to trim the output to a convenient character position. 
-(above command) | colrm 1 30 | xargs -I$ p4 integrate branch1/$ branch2/$
-
-Prints every issue in a sprint, the Cls for each issue, and the files 
-touched by each CL. This data tree is also dumped to a yaml file. 
-./af -vs 23698 -r3 -d "sprint23698.yml"
-
-
-###############################################################################
-#                                  FILTERING                                  #
-###############################################################################
-
-How Filters Work (extract from code comments):
-
-Filters for any key in any data struct can be added here. They should have the
-form "filter_name" => [:pos/:neg,  ['regexp','regexp',...]], notice that all
-regular expressions are in single quotes. When applied, a positive filter will
-return all items which match any of the regular expressions in the filter. A
-negative filter will return all items which match none of the regular
-expressions. The behavior is equivalent to the '-v' option in grep.
-
-filter guidelines:
- -- A filter type (negative or positive) is required 
- -- No mixing of (neg/pos) matchers is allowed within a single filter
- -- Filtering only works on text fields
- -- Custom filters can be added here or to FILTER_FILE (yaml format)
-
-A predefined filter can be added to a yml formatted filter file or straight to
-acuforce.rb. FILTER_FILE defines the path name of the yml filter file. 
-PREDEFINED_FILTERS is the hash that contains all the predefined filters. 
-
-
-###############################################################################
-#                                  GOTCHAS                                    #
-###############################################################################
-
-Things to keep in mind:
-- AcuForce relies on p4 to extract all the files affected by a CL. (This
-  dependency will go away as soon as I write a good scraper for the Acunote's CL
-  pages). A warning message will let the user know if p4 could not be found or
-  the user is not logged into the perforce server.
-- Removing the -v option for any of the above examples results in only 
-  the leaf data being printed. This is usefull when trying to pipe 
-  the output to an external command. Any error or warning messages are written
-  to stderr so stdout should always be a clean list of CLs, file paths, etc.
-- Passing a username/password is not required. If an acunote.session file
-  doesn't exist the user/pass combo will be requested via stdin. The
-  acunote.sessin file is created automatically as soon as the script
-  successfully logs into acunote.
-- Only active sprints will be traversed for any project (I'll make this an
-  option later).
-
-
-###############################################################################
-#                                  BEWARE                                     #
-###############################################################################
-
-Don't do this:
-./af -vp XXXX -r[3/4]
+Much more to come including:
+Better OmniPlan integration (upload on publish.. etc)
+Auto task creation for acunote when you upload a csv
+Better OmniPlan-Acunote data point allignment(due dates, assignments, etc)
+Meta data gets moved to in attachments? (maybe) 
+Supporting more then 4 levels deep on the Acunote side (some sort of meta data most likely)
