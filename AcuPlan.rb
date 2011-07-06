@@ -21,52 +21,18 @@ DEBUG = true
 
 module AcunoteBase
 
-  @authToken = nil
+  SESSION_FILE = "#{THIS_DIR}/acuPlan.session"
+
+
   HOME_URL = "https://acunote.cashnetusa.com/"
-
-  def grab_auth_token
-    return @authToken if @authToken
-    home_page = get_page(HOME_URL)
-    @authToken = home_page.forms.first['authenticity_token']
-    STDERR.puts "FOUND AUTH TOKEN #{@authToken}" if DEBUG
-  end
-
-  #Retrieves the requested page and verifies destination url to make sure there
-  #was no innapropriate redirect. If redirected, a force login will be performed
-  #(assuming credentials are passed in as arguments) and the page will be retrieved 
-  #again. 
-  def get_page(url, matcher = /.*/, retry_count = 1)
-    begin
-      page = @mech.get(url)
-      if page.uri.to_s =~ matcher
-        page
-      else
-        #try a force login and retry once (in case the session is stale)
-        if retry_count > 0 && login(true)
-          STDERR.puts "Attn: get_page problem, overwrote stale session, retrying..."
-          get_page(url, matcher, retry_count - 1)
-        else STDERR.puts "Error: Can't retrieve valid response page for <#{url}>"
-        end
-      end
-    rescue Mechanize::ResponseCodeError => e
-      STDERR.puts "ResponseError!"
-      puts url if DEBUG
-      puts e if DEBUG
-    end
-  end
-  private :get_page
-end
-
-module AcunoteLogin
-  include AcunoteBase
+  LOGIN_URL = "https://acunote.cashnetusa.com/login"
 
   LOGIN_FIELDS = ['login[username]', 'login[password]']
   LOGIN_FORM_NAME = "login_form"
-  SESSION_FILE = "#{THIS_DIR}/acuPlan.session"
 
-  LOGIN_URL = "https://acunote.cashnetusa.com/login"
-  
+  @authToken = nil
 
+  # Get user input to login to Acunote
   def get_login_info
     username = ask("Acunote Login name:")
     password = ask("Acunote(LDAP) Password:") {|q| q.echo = false}
@@ -107,6 +73,39 @@ module AcunoteLogin
       @logged_in = true
     end
   end
+
+  #Not currently needed but grabs an auth token from the first form we can find
+  def grab_auth_token
+    return @authToken if @authToken
+    home_page = get_page(HOME_URL)
+    @authToken = home_page.forms.first['authenticity_token']
+    STDERR.puts "FOUND AUTH TOKEN #{@authToken}" if DEBUG
+  end
+
+  #Retrieves the requested page and verifies destination url to make sure there
+  #was no innapropriate redirect. If redirected, a force login will be performed
+  #(assuming credentials are passed in as arguments) and the page will be retrieved 
+  #again. 
+  def get_page(url, matcher = /.*/, retry_count = 1)
+    begin
+      page = @mech.get(url)
+      if page.uri.to_s =~ matcher
+        page
+      else
+        #try a force login and retry once (in case the session is stale)
+        if retry_count > 0 && login(true)
+          STDERR.puts "Attn: get_page problem, overwrote stale session, retrying..."
+          get_page(url, matcher, retry_count - 1)
+        else STDERR.puts "Error: Can't retrieve valid response page for <#{url}>"
+        end
+      end
+    rescue Mechanize::ResponseCodeError => e
+      STDERR.puts "ResponseError!"
+      puts url if DEBUG
+      puts e if DEBUG
+    end
+  end
+  private :get_page
 end
 
 module AcunoteWiki
@@ -145,7 +144,7 @@ module AcunoteWiki
 end
 
 class AcuPlan
-  include AcunoteLogin
+  include AcnuoteBase
   include AcunoteWiki
 
   def initialize
