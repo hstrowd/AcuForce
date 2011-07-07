@@ -9,20 +9,20 @@ require 'fastercsv' #gem install fastercsv
 #end
 #
 
+
 puts "Missing file name to translate to omni plan, usage ./omni_to_acunote.rb file_name " unless ARGV[1] 
 
 
-OmniToAcunoteMap = {
-  :Task => :Description,
-  
 
-}
 #Set debug mode by default false unless passed in
-debug = ARGV[2] && ARGV[2] ~= /t|d/
+DEBUG = ARGV[2] && ARGV[2] ~= /t|d/
 
-puts "opening file #{ARGV[1])}" if debug
+#For now always debug
+DEBUG = true
 
-lines = []
+def read_omni_file
+puts "opening file #{ARGV[1])}" if DEBUG
+rows = FasterCSV.read(ARGV[1])
 File.open(ARGV[1], 'r').each do |line|
   puts "line #{line}" if debug
   lines << line.chmod.split(',')
@@ -52,6 +52,9 @@ Number, Issue, val
 Description, Task, val
 Owner, Assigned, val
 Priority, Priority, acunote_to_omni_priority(val)
+Estimate, Effort, val+'h'
+Remaining, Completed (val.to_f/acu_data[Estimate].to_f) + '%'
+
 
 def acunote_to_omni_priority(acu_value)
   return '' if acu_value.empty?
@@ -67,7 +70,7 @@ OMNI_DAY_TO_ACUNOTE_HOUR_CONVERSION_RATE = Hash.new(5) #Default everyone to 5 ho
 WBS Number, Level,  omni_to_acunote_level_conversion(val)
 Task, Description, val
 End, Due Date, Date.parse(val)
-Effort, Estimate, parse_omni_time(val)
+Effort, Estimate, omni_to_acu_time(val)
 Completed, Remaining, parse_percent(val) * Estimate.to_f
 Issue, Number, val.to_i
 Assigned, Owner, val.split.first
@@ -78,12 +81,7 @@ Start
 Duration
 Task Cost
 Planned Start
-Start Variance
 Planned End
-End Variance
-Constraint Start
-Constraint End
-Prerequisites
 Notes
 
 
@@ -91,7 +89,7 @@ def omni_to_acunote_level_conversion(val)
   val.count('.') + 1
 
 
-def parse_omni_time(time_as_string)
+def omni_to_acu_time(time_as_string)
   total_time = 0 #number of omni hours
   time_array = time_as_string.split
   time_array.each do |x|
