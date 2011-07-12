@@ -1,42 +1,60 @@
 #!/usr/bin/env ruby
 require 'date.rb'
 require 'rubygems'
+require 'nokogiri'  #gem install nokogiri
 require 'fastercsv' #gem install fastercsv
-
-#FasterCSV.foreach("data.csv", :quote_char => '"', :col_sep =>';', :row_sep =>:auto) do |row|
-#  puts row[0]
-#  break
-#end
-#
-
 
 puts "Missing file name to translate to omni plan, usage ./omni_to_acunote.rb file_name " unless ARGV[1] 
 
-
-
 #Set debug mode by default false unless passed in
-DEBUG = ARGV[2] && ARGV[2] ~= /t|d/
+#DEBUG = ARGV[2] && ARGV[2] ~= /t|d/
 
 #For now always debug
 DEBUG = true
 
-def read_omni_file
-puts "opening file #{ARGV[1])}" if DEBUG
-rows = FasterCSV.read(ARGV[1])
-File.open(ARGV[1], 'r').each do |line|
-  puts "line #{line}" if debug
-  lines << line.chmod.split(',')
-end
+@omni_in = nil
+@omni_headers = nil
+@omni_tasks = nil
+
+@file_location = ARGV[1] || '/Users/bfeigin/Documents/Enova/export_v2/Q3_2011_bfeigin_team.html'
+
+def omni_file_to_tasks(file_location = @file_location, force = false)
+  puts "opening file #{@file_location}" if DEBUG
   
-headers = lines.delete_at(0)
+  if force
+    puts "clearing file and variables by force" if DEBUG
+    @omni_headers = @omni_tasks = @omni_in = nil
+  end
 
-output 
+  return @omni_tasks if @omni_tasks
+
+  # Set up the file to parse
+  # First grab headers then to get the tasks
+  # For each node (excluding the project title header [0]) find the XML Elements 
+  # and then grab the text inside of each of those
+  @omni_in      = Nokogiri::HTML(open(file_location))
+  @omni_headers = @omni_in.css('.header').map{|x| x.children.first.text}
+  @omni_tasks   = @omni_in.css('.task_anchor')[1..-1].map do |task_node|
+    task_node.children.select{ |noko_nodes| Nokogiri::XML::Element === noko_nodes }.map{ |data|
+      data.children.first && data.children.first.text }
+  end
+end
 
 
-
-
-
-
+#Convienence method creates an array of omni_header => omni_value
+def map_row_to_headers(rows = @omni_tasks, headers = @omni_headers)
+  return {} unless (rows && headers)
+  
+  row_array = []
+  rows.each do |row| 
+    row_hash = Hash.new
+    headers.each_with_index do |header, index|
+      row_hash[header] = row[index]
+    end
+    row_array << row_hash
+  end
+  row_array
+end
 
 #TODO Prereqs will require post processing, because only acunote has master "ID" number for all tasks 
 # Omni -> Acunote
@@ -67,14 +85,17 @@ end
 OMNI_DAY_TO_ACUNOTE_HOUR_CONVERSION_RATE = Hash.new(5) #Default everyone to 5 hours for now
 
 
-WBS Number, Level,  omni_to_acunote_level_conversion(val)
-Task, Description, val
-End, Due Date, Date.parse(val)
-Effort, Estimate, omni_to_acu_time(val)
-Completed, Remaining, parse_percent(val) * Estimate.to_f
-Issue, Number, val.to_i
-Assigned, Owner, val.split.first
-Priority, Priority, omni_to_acunote_priority(val)
+
+ID, Level,  omni_to_acunote_level_conversion(val)
+#Task, Description, val
+#End, Due Date, Date.parse(val)
+#Effort, Estimate, val.to_i #omni_to_acu_time(val)
+#Completed, Remaining, parse_percent(val) * Estimate.to_f
+#Issue, Number, val.to_i
+#Assigned, Owner, val.split.first
+#Priority, Priority, omni_to_acunote_priority(val)
+#Task Type, Is Group, val ~= /Group/
+
 
 #META DATA ONLY
 Start
@@ -87,9 +108,13 @@ Notes
 
 def omni_to_acunote_level_conversion(val)
   val.count('.') + 1
+end
 
 
 def omni_to_acu_time(time_as_string)
+  
+  return time.to_i
+
   total_time = 0 #number of omni hours
   time_array = time_as_string.split
   time_array.each do |x|
@@ -111,14 +136,6 @@ end
 def parse_percent(value)
     value.to_f / 100.0
 end
-
-
-
-
-
-
-
-
 
 
 ##################### END CONVERSION STRAT ################
