@@ -2,7 +2,7 @@
 require 'date.rb'
 require 'rubygems'
 require 'nokogiri'  #gem install nokogiri
-require 'fastercsv' #gem install fastercsv
+require 'xmlsimple'
 
 puts "Missing file name to translate to omni plan, usage ./omni_to_acunote.rb file_name " unless ARGV[1] 
 
@@ -12,50 +12,134 @@ puts "Missing file name to translate to omni plan, usage ./omni_to_acunote.rb fi
 #For now always debug
 DEBUG = true
 
-@omni_in = nil
-@omni_headers = nil
-@omni_tasks = nil
 
-@file_location = ARGV[1] || '/Users/bfeigin/Documents/Enova/export_v2/Q3_2011_bfeigin_team.html'
+file_location = ARGV[1] || '/Users/bfeigin/Documents/Enova/Team/Q3_2011_bfeigin_team.oplx/Actual.xml'
 
-def omni_file_to_tasks(file_location = @file_location, force = false)
-  puts "opening file #{@file_location}" if DEBUG
-  
-  if force
-    puts "clearing file and variables by force" if DEBUG
-    @omni_headers = @omni_tasks = @omni_in = nil
-  end
+module AcuplanTranslator
 
-  return @omni_tasks if @omni_tasks
-
-  # Set up the file to parse
-  # First grab headers then to get the tasks
-  # For each node (excluding the project title header [0]) find the XML Elements 
-  # and then grab the text inside of each of those
-  @omni_in      = Nokogiri::HTML(open(file_location))
-  @omni_headers = @omni_in.css('.header').map{|x| x.children.first.text}
-  @omni_tasks   = @omni_in.css('.task_anchor')[1..-1].map do |task_node|
-    task_node.children.select{ |noko_nodes| Nokogiri::XML::Element === noko_nodes }.map{ |data|
-      data.children.first && data.children.first.text }
-  end
-end
-
-
-#Convienence method creates an array of omni_header => omni_value
-def map_row_to_headers(rows = @omni_tasks, headers = @omni_headers)
-  return {} unless (rows && headers)
-  
-  row_array = []
-  rows.each do |row| 
-    row_hash = Hash.new
-    headers.each_with_index do |header, index|
-      row_hash[header] = row[index]
+  def process_omniplan_value(key, val)
+    case key
+    when 'ID'
+      omni_to_acunote_level_conversion(val)
+    when 'Task' 
+      val
+    when 'End'
+      Date.parse(val)
+    when 'Effort'
+      val.to_i
+    when 'Completed'
+      parse_percent(val) * @current_row['Effort'].to_f
+    when 'Issue'
+      val.to_i
+    when 'Assigned'
+      val.split.first
+    when 'Priority'
+      omni_to_acunote_priority(val)
+    when 'Task Type'
+      val =~ /Group/
+    else
+      val
     end
-    row_array << row_hash
   end
-  row_array
+
+  def acunote_to_omni_priority(acu_value)
+    return '' if acu_value.empty?
+    6 - (acu_value.gsub(/\D/,'').to_i)
+  end
+
+  def omni_to_acunote_priority(omni_value)
+    'P' + (6 - (omni_value % 6)).to_s
+  end
+
+  def omni_to_acunote_level_conversion(val)
+    val.count('.') + 1
+  end
+
+  def parse_percent(value)
+      value.to_f / 100.0
+  end
 end
 
+
+class OmniTask
+  include AcuplanTranslator
+  attr_accessor :children, :id, :attributes, :child_refs, :raw_data
+  
+  def initialize(raw_data)
+    @raw_data = raw_data
+    @attributes['type']  = raw_data['type'] || 'task'
+    @attributes['title'] = raw_data['title']
+    @child_refs = raw_data['child-task'].map{|node| node['idref']}
+   
+    #raw effort is reported in seconds we want hours
+    @effort = raw_data['effort'].to_i/3600
+    process_user_data(raw_data['user-data'])
+  end
+
+  def process_user_data(values)
+    
+  end
+
+end
+
+class OmniTaskGroup
+  attr_accessor :roots, :doc, :resources
+
+  # raw_file in is typically from a IO.read('file_name')
+  def initialize(raw_file)
+    @doc = XmlSimple.xml_in(raw_file)
+    @roots     = []
+    @resources = []
+  
+    process_resources
+    process_tasks
+
+    # We don't actually need to store the top task but do need it's children
+    top_task_id = @doc['top-task'].first['idref']
+
+    top_task = find_tasks('id', top_task_id).first
+    root_tasks_raw = find_tasks('id', child_refs(top_task))
+    root_tasks_raw.each do |root_task_raw|
+       task = OmniTask.new(root_task_raw)
+       recurse_children(task)
+       @roots << task
+    end
+  end
+
+
+  def recurse_children(task)
+    task.children = find_tasks('id',child_refs(task)).map{|raw| OmniTask.new(raw)}
+    task.children.each do |sub_task|
+      recurse_children(sub_task)
+    end
+  end
+
+
+  def child_refs(node)
+    if node.is_a?(Hash)
+      node['child-task'].map{|child| child['idref']}
+    else
+      node.child_refs 
+    end
+  end
+
+  def find_tasks(key, value)
+    if value.is_a?(Array)
+      tasks.select{|task| value.include?(task[key])}
+    else
+      tasks.select{|task| task[key] == value}
+    end
+  end
+
+  def tasks
+    @tasks ||= @doc['task']
+  end
+  private :tasks
+
+end
+
+
+=begin
 #TODO Prereqs will require post processing, because only acunote has master "ID" number for all tasks 
 # Omni -> Acunote
 #   Need to create the task before you can set up a dependency so might have to be two step upload
@@ -74,12 +158,8 @@ Estimate, Effort, val+'h'
 Remaining, Completed (val.to_f/acu_data[Estimate].to_f) + '%'
 
 
-def acunote_to_omni_priority(acu_value)
-  return '' if acu_value.empty?
-  6 - (acu_value.gsub(/\D/,'').to_i)
-end
 
-#OMNI TO ACUNOTE
+########################## OMNI TO ACUNOTE ############################
 #OmniPlan, Acunote, proc 
 
 OMNI_DAY_TO_ACUNOTE_HOUR_CONVERSION_RATE = Hash.new(5) #Default everyone to 5 hours for now
@@ -97,6 +177,9 @@ ID, Level,  omni_to_acunote_level_conversion(val)
 #Task Type, Is Group, val ~= /Group/
 
 
+
+
+
 #META DATA ONLY
 Start
 Duration
@@ -105,38 +188,6 @@ Planned Start
 Planned End
 Notes
 
-
-def omni_to_acunote_level_conversion(val)
-  val.count('.') + 1
-end
-
-
-def omni_to_acu_time(time_as_string)
-  
-  return time.to_i
-
-  total_time = 0 #number of omni hours
-  time_array = time_as_string.split
-  time_array.each do |x|
-    case x
-    when /d/
-      total_time += OMNI_DAY_TO_ACUNOTE_HOUR_CONVERSION_RATE[@user_name] * x.to_i
-    when /h/
-      total_time += x.to_i
-    end
-  end
-end
-
-
-def omni_to_acunote_priority(omni_value)
-  'P' + (6 - (omni_value % 6)).to_s
-end
-
-
-def parse_percent(value)
-    value.to_f / 100.0
-end
-
-
 ##################### END CONVERSION STRAT ################
-#
+
+=end
