@@ -20,17 +20,24 @@ THIS_DIR = File.dirname(THIS_FILE)
 DEBUG = true
 
 module AcunoteBase
+  require 'rubygems'
+  require 'mechanize'
+  require 'highline/import'
+  require 'yaml'
 
-  SESSION_FILE = "#{THIS_DIR}/session.acuPlan.session"
 
 
-  HOME_URL = "https://acunote.cashnetusa.com/"
-  LOGIN_URL = "https://acunote.cashnetusa.com/login"
+  HOME_URL = "https://acunote.cashnetusa.com"
+  #HOME_URL = "http://cashnetusatest.acunote.com"
+  LOGIN_URL = "#{HOME_URL}/login"
+
+  SESSION_FILE = "#{THIS_DIR}/session.cashtest.session"
 
   LOGIN_FIELDS = ['login[username]', 'login[password]']
   LOGIN_FORM_NAME = "login_form"
 
   @authToken = nil
+  @mech ||= Mechanize.new
 
   # Get user input to login to Acunote
   def get_login_info
@@ -41,6 +48,7 @@ module AcunoteBase
 
 
   def acunote_login(force = false)
+    @logged_in = nil if force
     return true if @logged_in
 
     #Going to assume the session is good to save time here. The session will be
@@ -64,7 +72,6 @@ module AcunoteBase
 
       unless p.uri.to_s ==  HOME_URL
         STDERR.puts "Error: Bad login!"
-        exit
       end
       STDERR.puts "Navigated to '#{p.title}'" if DEBUG
 
@@ -106,12 +113,65 @@ module AcunoteBase
     end
   end
   private :get_page
+
+end
+
+module AcunoteSprint
+  include AcunoteBase
+  PROJ_ID = 5208
+
+
+  SPRINT_URL = proc{|proj_id, path| "#{HOME_URL}/projects/#{proj_id}/sprints/#{path}"}
+
+  def create_sprint(sprint_name, opts = {})
+    opts[:sprint_type] ||= 'Backlog'
+    opts[:proj_id]     ||= PROJ_ID
+    opts[:start_date]  ||= Date.today
+    opts[:end_date]    ||= opts[:start_date] + 365
+
+    sprint_page = get_page(SPRINT_URL.call(opts[:proj_id], 'new'))
+    sprint_form = sprint_page.forms_with({:name => 'sprint_new_dialog'}).first
+
+    if opts[:sprint_type] == 'Backlog'
+      (sprint_form.radiobuttons_with(:value => /Backlog/).first && 
+      sprint_form.radiobuttons_with(:value => /Backlog/).first.check)
+    else
+      sprint_form.radiobuttons_with(:value => /Iteration/).first.check
+      sprint_form.fields_with(:id => 'sprint_start_date').first.value = opts[:start_date].to_s
+    end
+    sprint_form.fields_with(:id => 'sprint_name').first.value = sprint_name
+    sprint_form.fields_with(:id => 'sprint_end_date').first.value = opts[:end_date].to_s
+    sprint_form.submit
+  end
+
+  def find_sprint_by_name(sprint_name, proj_id = PROJ_ID)
+    sprints = get_page(SPRINT_URL.call(proj_id))
+    sprints.links_with(:text => sprint_name).first
+  end
+
+  def upload_csv_to_sprint(raw_data, sprint_number, opts = {:proj_id => 5208})
+    import_page = get_page(SPRINT_URL.call(opts[:proj_id],"#{sprint_number}/import"))
+    import_form = import_page.form_with({:name => 'import_form'})
+    import_form.field_with(:id => 'data_to_import').value  += "\n"+raw_data
+    import_form.submit
+  end
+
+  # For creating future dev iterations
+  def create_dev_sprints(team_name, first_start_date, count)
+    (0..count - 1).map do |x| 
+      start_date = (Date.new(2011,7,18) + (x * 7))
+      opts = {:start_date => start_date, :end_date => start_date + 6, :sprint_type => "Iteration"}
+      create_sprint("#{team_name} #{start_date.to_s} - #{opts[:end_date].to_s}", opts)
+    end
+    true
+  end
+
 end
 
 module AcunoteWiki
   include AcunoteBase
 
-  WIKI_URL = proc{|proj_id, task_id| "https://acunote.cashnetusa.com/projects/#{proj_id}/wiki/#{task_id}"}
+  WIKI_URL = proc{|proj_id, task_id| "#{HOME_URL}/projects/#{proj_id}/wiki/#{task_id}"}
   WIKI_EDIT_URL = proc{|proj_id, task_id| WIKI_URL.call(proj_id,task_id)+"/edit"}
 
   def acunote_update_wiki(file_location,task_id)
@@ -143,12 +203,12 @@ module AcunoteWiki
   end
 end
 
+
 class AcuPlan
-  include AcnuoteBase
   include AcunoteWiki
+  include AcunoteSprint
 
   def initialize
-    @mech = Mechanize.new
     run_loop
   end
 
@@ -160,20 +220,26 @@ class AcuPlan
     puts "what would you like to do?"
     acunote_login
     
-    # This makes me smile and other cry?
-    task_id = ask("Task ID? -OR- blank for default (recommended)")
-    #This will need to be updated by quarter?
-    task_id = 379310 if task_id.empty?
+    ## This makes me smile and other cry?
+    ##This will need to be updated by quarter?
 
     while true do
-      task_to_run= ask("What would you like to do?\nu - Update metaTask with file\n r - Read MetaWiki\nx - Exit")
+      task_to_run= ask("What would you like to do?\nu - Update metaTask with file\n r - Read MetaWiki\np - Create Project\nx - Exit")
       case task_to_run
       when 'r'
+        task_id = ask("Task ID? -OR- blank for default (recommended)")
+        task_id = 379310 if task_id.empty?
         save_location = ask("Where would you like to save the output? blank for STDOUT")
         pull_task_wiki(task_id,save_location)
       when 'u'
+        task_id = ask("Task ID? -OR- blank for default (recommended)")
+        task_id = 379310 if task_id.empty?
         file_location= ask("Where is the file (csv) you'd like to upload?")
         acunote_update_wiki(file_location, task_id)
+      when 'p'
+        sprint_name = ask("Name of the sprint you'd like to create?")
+        create_sprint(sprint_name)
+        find_sprint_by_name(sprint_name)
       when 'x'
         exit(0)
       end
@@ -181,5 +247,5 @@ class AcuPlan
   end
 end
 
-runner = AcuPlan.new
+#runner = AcuPlan.new
 
