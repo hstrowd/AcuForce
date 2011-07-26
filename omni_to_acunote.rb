@@ -5,43 +5,13 @@ require 'nokogiri'  #gem install nokogiri
 require 'xmlsimple'
 require '~/code/AcuPlan/AcuPlan.rb'
 
-puts "Missing file name to translate to omni plan, usage ./omni_to_acunote.rb file_name " unless ARGV[1] 
-
-#Set debug mode by default false unless passed in
-#DEBUG = ARGV[2] && ARGV[2] ~= /t|d/
-
 #For now always debug
 DEBUG = true
 
-
-file_location = ARGV[1] || '/Users/bfeigin/Documents/Enova/Team/Q3_2011_bfeigin_team.oplx/Actual.xml'
+file_location = ARGV[1] || (DEBUG && '/Users/bfeigin/Documents/Enova/Team/Q3_2011_bfeigin_team.oplx/Actual.xml'
+puts "Missing file name to translate to omni plan, usage ./omni_to_acunote.rb file_name " unless file_location
 
 module AcuplanTranslator
-
-  def process_omniplan_value(key, val)
-    case key
-    when 'ID'
-      omni_to_acunote_level_conversion(val)
-    when 'Task' 
-      val
-    when 'End'
-      Date.parse(val)
-    when 'Effort'
-      val.to_i
-    when 'Completed'
-      parse_percent(val) * @current_row['Effort'].to_f
-    when 'Issue'
-      val.to_i
-    when 'Assigned'
-      val.split.first
-    when 'Priority'
-      omni_to_acunote_priority(val)
-    when 'Task Type'
-      val =~ /Group/
-    else
-      val
-    end
-  end
 
   def acunote_to_omni_priority(acu_value)
     return '' if acu_value.empty?
@@ -56,13 +26,26 @@ module AcuplanTranslator
   def parse_percent(value)
       value.to_f / 100.0
   end
-end
 
+  def dependents
+    children.map{|x| x.issue_number}.compact.join(',')
+  end
+  
+  def remaining
+    return unless @effort_required && @effort_done
+    @effort_required - @effort_done
+  end
+
+  def acunote_level
+    @task_level
+  end
+
+end
 
 class OmniTask
   include AcuplanTranslator
 
-  attr_accessor :children, :issue_number, :attributes, :child_refs, :raw_data
+  attr_accessor :children, :task_id, :attributes, :child_refs, :raw_data
   attr_accessor :title, :task_type, :task_level, :prerequisites, :owner_ref, :owner_name, :meta_data,
                 :effort, :effort_done
   
@@ -85,46 +68,21 @@ class OmniTask
 
     if level > 4
       puts "Acunote does not currently support more then 4 levels deep"
-      puts "Task #{@title} is at level #{level}, and needs to be special cased"
+      puts "Task #{@title} is at level #{level}, and needs to be corrected"
+      exit -1
     end
 
     #process_user_data
 
     if raw_data['user-data']
       raw_data['user-data'].each do |user_data|
-        case user_data['key']
-        when 'Offshore'
-          @meta_data[:Offshore]   = true
-        when /MX/
-          @meta_data[:MXCritical] = true
-        else
-          #TODO PUT BACK
-          @issue_number = nil #user_data['string']
+        if user_data['key'] == 'TaskID'
+          @task_id = user_data
         end
       end
     end
+    @task_id ||= ''
     #raw effort is reported in seconds we want hours
-  end
-
-  def remaining
-    return unless @effort_required && @effort_done
-    @effort_required - @effort_done
-  end
-
-  def dependents
-    children.map{|x| x.issue_number}.compact.join(',')
-  end
-
-  def acunote_level
-    @task_level
-  end
-
-  def omni_level
-    level - 1
-  end
-
-  def to_s
-    "Title: #{@title} \n children_refs: [#{@child_refs.join(", ")}] \n level #{@task_level}\n" 
   end
   
   def to_acunote_csv
@@ -147,6 +105,11 @@ class OmniTask
       nil
     ].join(',')
   end
+
+  def to_s
+    "Title: #{@title} \n children_refs: [#{@child_refs.join(", ")}] \n level #{@task_level}\n" 
+  end
+
 end
 
 
@@ -168,18 +131,27 @@ class OmniTaskGroup
   end
 
   def process_tasks
-    top_task_id = @doc['top-task'].first['idref']
+    #OmniPlan indicates it's "top-task" by the top-task node so find that first
+    # We get the idref for the task then do a search of the doc by id and get the root node
+    root_node_id = @doc['top-task'].first['idref']
+    root_node = find_tasks('id', root_node_id).first
 
-    top_task = find_tasks('id', top_task_id).first
-    sprint_tasks_raw = find_tasks('id', child_refs(top_task))
-    sprint_tasks_raw.each do |sprint_task_raw|
-       task = OmniTask.new(sprint_task_raw, 0)
+
+    #Now we need to find all of the dependents of that "top-task"
+    #These are the actual top level tasks
+    #Each of these top level tasks will be considered a project
+    projects_raw = find_tasks('id', child_refs(root_node))
+
+    # For each project node build recursively build the tree of tasks below it
+    projects_raw.each do |project_raw|
+       task = OmniTask.new(project_raw, 0)
        build_children(task)
        @sprints << task
     end
     true
   end
 
+  # Used to assign a resource name to a task by reference
   def assign_resource_name_for_task(task)
     resource = find_resource('id',task.owner_ref)
     unless resource.empty?
@@ -187,20 +159,18 @@ class OmniTaskGroup
     end
   end
 
-  def to_s
-    sprints.each do |sprint|
-      sprint.to_s
-    end
-  end
-
-
+  # TODO 
+  # This isn't complete but it does create sprints correctly albiet very slowly
+  # Next step is to push the csv generated by sprints_to_csv into the sprints created (or found)
   def push_to_acunote
+    test_prefix = "" || (DEBUG && "BFEIGIN TEST")
     sprint_sprint_ids = @sprints.map do |sprint|
-      ref = find_sprint_by_name("BFEIGIN TEST"+sprint.title) || (create_sprint("BFEIGIN TEST"+sprint.title) && find_sprint_by_name("BFEIGIN TEST"+sprint.title))
+      ref = find_sprint_by_name(test_prefix + sprint.title) || (create_sprint(test_prefix + sprint.title) && find_sprint_by_name(test_prefix + sprint.title))
       ref.href.split('/').select{|chunk| chunk =~ /\d+/}.last
     end
   end
 
+  # Uses task_to_acunote to generate a csv of tasks for each of the sprints found during initialization
   def sprints_to_csv
     sprint_map = {}
     @sprints.each do |sprint|
@@ -212,11 +182,16 @@ class OmniTaskGroup
   end
 
   # Acunote Format:
-  # Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,Duplicate,Predecessors,Successors,Version 1
+  # Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,
+  # Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,
+  # Duplicate,Predecessors,Successors,Version 1
   #
   def task_to_acunote(task, to_csv)
+    #Push the current task into acunote format
     to_csv << task.to_acunote_csv  
 
+    #Then map it's children
+    #This is sort of an inject but map as a verb is way more intuitive 
     if task.children.size > 0
       to_csv << task.children.map do |child|
         task_to_acunote(child, [])
@@ -225,21 +200,50 @@ class OmniTaskGroup
     to_csv.flatten
   end
 
+  #Used to recursively build a tree of tasks for a particular node
   def build_children(task, level = 0)
+    #First find the resource
     assign_resource_name_for_task(task)
+
+    # Find the child_refs of the current node
+    # For each of the children refs found create a new OmniTask instance 
+    # (we cheat with level because it's easier)
     task.children = find_tasks('id',child_refs(task)).map{|raw| OmniTask.new(raw, level + 1)}
+
+    # Now take each of the children found, and recurse
+    # Note we only increment level + 1 to the child calls. 
+    # Each child is responsible for giving its "grand-children" the correct level
     task.children.each do |sub_task|
       build_children(sub_task, level + 1)
     end
   end
 
 
+  #Finds the child idrefs of a particular node
   def child_refs(node)
     if node.is_a?(Hash)
       node['child-task'].map{|child| child['idref']}
     else
       node.child_refs 
     end
+  end
+
+
+  def to_s
+    sprints.each do |sprint|
+      sprint.to_s
+    end
+  end
+
+#=== Helper Find methods to parse parts of the xml document ===#
+  def find_resource(key,value)
+    @resources ||= {}
+
+    unless @resources[key]
+      @resources[key] = resources.select{|res| res[key] == value}
+    end
+
+    @resources[key]
   end
 
   def find_tasks(key, value)
@@ -251,9 +255,7 @@ class OmniTaskGroup
     val || []
   end
 
-  def find_resource(key,value)
-    resources.select{|res| res[key] == value}
-  end
+#=== so we don't have to parse quite as much ===#
 
   def resources
     @resources ||= @doc['resource'][1..-1]
@@ -316,5 +318,10 @@ Planned End
 Notes
 
 ##################### END CONVERSION STRAT ################
+  def to_s
+    sprints.each do |sprint|
+      sprint.to_s
+    end
+  end
 
 =end
