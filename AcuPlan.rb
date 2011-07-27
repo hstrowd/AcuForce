@@ -121,7 +121,7 @@ module AcunoteSprint
   PROJ_ID = 5208
 
 
-  SPRINT_URL = proc{|proj_id, path| "#{HOME_URL}/projects/#{proj_id}/sprints/#{path}"}
+  SPRINT_URL = proc{|proj_id, sprint_id| "#{HOME_URL}/projects/#{proj_id}/sprints/#{sprint_id}"}
 
   def create_sprint(sprint_name, opts = {})
     opts[:sprint_type] ||= 'Backlog'
@@ -149,11 +149,19 @@ module AcunoteSprint
     sprints.links_with(:text => sprint_name).first
   end
 
+  def sprint_url_by_id_and_project(sprint_id, proj_id = PROJ_ID)
+    SPRINT_URL.call(proj_id,sprint_id)
+  end
+
   def upload_csv_to_sprint(raw_data, sprint_number, opts = {:proj_id => 5208})
     import_page = get_page(SPRINT_URL.call(opts[:proj_id],"#{sprint_number}/import"))
     import_form = import_page.form_with({:name => 'import_form'})
     import_form.field_with(:id => 'data_to_import').value  += "\n"+raw_data
     import_form.submit
+  end
+
+  def export_csv_from_sprint(sprint_id, proj_id = PROJ_ID)
+    get_page(SPRINT_URL.call(proj_id,sprint_id) + '/export').body
   end
 
   # For creating future dev iterations
