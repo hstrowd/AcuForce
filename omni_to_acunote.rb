@@ -3,10 +3,11 @@ require 'date.rb'
 require 'rubygems'
 require 'nokogiri'  #gem install nokogiri
 require 'xmlsimple'
-require '~/code/AcuPlan/AcuPlan.rb'
+require 'csv'
+require 'AcuPlan.rb'
 
 #For now always debug
-DEBUG = true
+
 
 #puts "Missing file name to translate to omni plan, usage ./omni_to_acunote.rb file_name " unless file_location
 
@@ -17,7 +18,11 @@ module AcuplanTranslator
     6 - (acu_value.gsub(/\D/,'').to_i)
   end
 
+  #shorting for now if it's 0#shorting for now
+  # TODO
   def omni_to_acunote_priority(omni_value)
+    return nil if omni_value.to_i == 0 
+
     return '' unless omni_value
     'P' + (6 - (omni_value.to_i % 6)).to_s
   end
@@ -26,8 +31,11 @@ module AcuplanTranslator
       value.to_f / 100.0
   end
 
+  #shorting for now 
+  # TODO
   def dependents
-    children.map{|x| x.issue_number}.compact.join(',')
+    return nil
+    children.map{|x| x.taskID}.compact.join(',')
   end
   
   def remaining
@@ -44,7 +52,8 @@ end
 class OmniTask
   include AcuplanTranslator
 
-  attr_accessor :children, :taskID, :attributes, :child_refs, :raw_data
+  attr_reader   :taskID
+  attr_accessor :children, :child_refs, :raw_data
   attr_accessor :title, :task_type, :task_level, :prerequisites, :owner_ref, :owner_name, :meta_data,
                 :effort, :effort_completed, :refID
   
@@ -83,14 +92,44 @@ class OmniTask
     end
   end
 
-  def should_update_to_task_id?
-    @taskID && (@taskID != @refID)
+
+  # Checks that we don't already have a TaskID assigned
+  # Builds or adds a new key value pair to the user-data section of the raw data hash
+  # sets the taskID instance variable
+  # sets the refID to the instance variable + 't' for omniplan compliance
+  # 
+  # Returns:
+  #   old_refID - the previous reference ID for the task 
+  #
+  def add_task_id!(value)
+    #Once we have a value for TaskID we don't want to be able to change it from here(for now at least)
+    return false if @raw_data['user-data'] && @raw_data['user-data'].any?{|kvp| kvp['key'] == 'TaskID'}
+    
+    #need to create the user data field
+    @raw_data['user-data'] ||= []
+    @raw_data['user-data'] << {'string' => [value], 'key' => ['TaskID']}
+    @taskID = value
+
+    old_refID = @refID.to_s
+    @refID = 't' + value
+    @raw_data['id']= @refID
+
+    return old_refID
   end
 
+  def taskID
+    @taskID && @taskID.gsub('t','')
+  end
+
+  # Acunote Format:
+  # Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,
+  # Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,
+  # Duplicate,Predecessors,Successors,Version 1
+  #
   def to_acunote_csv
      [
       acunote_level,
-      issue_number, 
+      @taskID, 
       title, 
       meta_data[:Tags], 
       owner_name,
@@ -103,7 +142,7 @@ class OmniTask
       nil,nil,nil, #Due Date,QA Owner,Business Owner,
       nil,nil, #Wiki,Watchers
       nil, #Depends_on (set by dependents)
-      (('"' + dependents + '"') unless dependents.empty?), #Dependents
+      nil, #Dependents TODO
       nil
     ].join(',')
   end
@@ -119,20 +158,136 @@ class OmniTaskGroup
   include AcunoteBase
   include AcunoteSprint
 
-  attr_accessor :sprints, :doc, :resources, :file_path, :raw_file
+  attr_accessor :sprints, :doc, :resources, :file_path, :raw_file, :debug
 
+  OMNI_PLAN_XML_HEAD= '<?xml version="1.0" encoding="utf-8" standalone="no"?>'
   def initialize(file_path)
     @mech = Mechanize.new
-    @file_path = file_path
+
+    if file_path =~ /Actual\.xml$/
+      @file_path = file_path
+    else
+      @file_path = file_path + '/Actual.xml'
+    end
     @raw_file = File.read(@file_path)
     @doc = XmlSimple.xml_in(@file_path)
     @sprints     = []
-    @resources = []
+    @debug = true
 
     acunote_login
     process_tasks
-    save_omni_plan_file
+    #save_omni_plan_file
   end
+
+  #======= \ Acunote Modifications \  =====
+
+  # The big cahuna
+  # First make sure all top level project sprints exist in acunote
+  # then for each of the sprints upload a csv of it's tasks to that sprint
+  #
+  # Returns: 
+  #   true - each of the acunote sprints were updates correctly
+  #   false - something went wrong and a sprint was not updated correctly
+  # 
+  def push_to_acunote!
+    return false unless prepare_project_sprints!
+    result = @sprints.all? do |sprint|
+      upload_csv_to_sprint(sprint_to_csv(sprint), sprint.taskID)
+    end
+    if result
+      @sprints.all? do |sprint|
+        CSV.parse(export_csv_from_sprint(sprint.taskID)).each_with_index do |task_line,index|
+          #Scared that i will have stale objects curse my total understanding of ruby object storage
+          #I'm thinking i will have to do this though, good thing non of these are in anyway computationally hard :p
+          sprint_task_list = flat_task_list(sprint)
+          #Skip the header
+          if index == 0
+            next
+          end
+          sprint_task_list[index].update_task_with_id(task_line[1])
+        end
+      end
+    end
+    save_omni_plan_file(true)
+  end
+
+
+  # wrapper to iterate over each of the project sprints
+  # Makes sure each of them either has a taskID in which case we can assume it already exists
+  # OR
+  # Creates a new sprint, then finds the newly created sprint, 
+  # then parses the taskID out of the href for that sprint.
+  #
+  # Returns:
+  #   true - All sprints were created or already exist
+  #   false - Something went wrong
+  #
+  def prepare_project_sprints!
+    prefix = (@debug && "BFEIGIN TEST") || 'PROJECT'
+     @sprints.all? do |sprint|
+      prepare_project_sprint(sprint, prefix)
+    end
+  end
+
+  # If a sprint doesn't currently have a TaskID:
+  # we need to build a sprint in acunote, 
+  # and assosiate that taskID in the raw_file
+  # if all goes well we return true
+  def prepare_project_sprint(sprint, prefix)
+    unless sprint.taskID
+      ref = (create_sprint(prefix + sprint.title) && find_sprint_by_name(prefix + sprint.title))
+      update_task_with_id(sprint,ref.href.split('/').select{|chunk| chunk =~ /\d+/}.last)
+    end
+    true
+  end
+
+  # Uses task_to_acunote to generate a csv of tasks for each of the sprints found during initialization
+  def sprint_to_csv(sprint)
+    flat_task_list(sprint, false).map{|task| task.to_acunote_csv}.join("\r\n")
+  end
+
+  #======= / Acunote Modifications /  =====
+
+
+  #======= \ OmniPlan File Modifications \ =====
+  #
+  #"/Users/bfeigin/Documents/Enova/OmniPlanBackups/#{name}"
+  #Still in test mode
+  def save_omni_plan_file(use_temp_storage=false)
+    File.open(file_path+Time.now.to_s, 'w'){|z| z.write(export_raw_file)}
+  end
+
+  #File.open('/Users/bfeigin/Documents/Enova/testing/testv2.oplx/not.xml','w'){|x| x.write('<?  xml version="1.0" encoding="utf-8" standalone="no"?>' + XmlSimple.xml_out(xml,{:RootName => 'scenario'}))}
+
+  def export_raw_file
+    '<? xml version="1.0" encodin="utf-8" standalone="no"?>' + XmlSimple.xml_out(@doc,{:RootName => 'scenario'})
+  end
+
+  # 1 - update the task in the 'doc' with task that has the user-data
+  # 2 - Write the entire doc out to raw
+  # 3 - update the raw with the string pattern match
+  # 4 - re-read the doc back in now with the updated values
+  # 5 - recreate all tasks to be safe, as these models do not have a concept of staleness
+  # TODO To an orm soon enough
+  def update_task_with_id(task, taskID)
+    task_in_doc = find_tasks_by_id([task.refID,task.taskID].first)
+    old_ref_id = task.add_task_id!(taskID)
+    task_in_doc = task.raw_data
+    
+    @raw_file = export_raw_file
+    @raw_file.gsub!(Regexp.new("\"#{old_ref_id}\""),"\"#{task.refID}\"")
+
+    @doc = XmlSimple.xml_in(@raw_file)
+    process_tasks
+  rescue Exception => e
+    puts [task,e].join('|||')
+    puts "sorry but it's just too scary to continue given updating the task in file land didn't work"
+    exit -1
+  end
+
+  #======= / OmniPlan File Modifications / =====
+  
+  #======== \ Task Creation \ ==============
 
   def process_tasks
     #OmniPlan indicates it's "top-task" by the top-task node so find that first
@@ -146,6 +301,9 @@ class OmniTaskGroup
     #Each of these top level tasks will be considered a project
     projects_raw = find_tasks('id', child_refs(root_node))
 
+    #Do some quick initialization and we'll be off
+    @sprints = []
+
     # For each project node build recursively build the tree of tasks below it
     projects_raw.each do |project_raw|
        task = build_task(project_raw, 0)
@@ -158,78 +316,16 @@ class OmniTaskGroup
 
   def build_task(raw_data_in, level)
     task = OmniTask.new(raw_data_in, level)
-    if task.should_update_to_task_id?
-      update_raw_with_task_id(task.refID, task.taskID)
-    end
+    assign_resource_name_for_task(task)
     task
-  end
-
-  def update_raw_with_task_id(old_id,task_id)
-    @raw_file.gsub!(Regexp.new("\"#{old_id}\""),"\"#{task_id}\"")
-  rescue TypeError => e
-    puts [old_id,task_id,e].join('|||')
-    raise e
-  end
-
-  #Still in test mode
-  def save_omni_plan_file
-    File.open("/Users/bfeigin/Documents/Enova/SavedOmniPlan_#{Time.now.to_i}", 'w'){|z| z.write(@raw_file)}
   end
 
   # Used to assign a resource name to a task by reference
   def assign_resource_name_for_task(task)
-    resource = find_resource('id',task.owner_ref) || []
+    resource = find_resource_by_id(task.owner_ref) || []
     unless resource.empty?
       task.owner_name = resource.first['name'].first
     end
-  end
-
-  # TODO 
-  # This isn't complete but it does create sprints correctly albiet very slowly
-  # Next step is to push the csv generated by sprints_to_csv into the sprints created (or found)
-  def push_to_acunote
-  end
-
-
-  def find_or_create_project_sprints
-    prefix = (DEBUG && "BFEIGIN TEST") || 'PROJECT'
-    sprint_sprint_ids = @sprints.map do |sprint|
-      unless sprint.taskID
-        ref = (create_sprint(prefix + sprint.title) && find_sprint_by_name(prefix + sprint.title))
-        sprint.taskID = ref.href.split('/').select{|chunk| chunk =~ /\d+/}.last
-      end
-      sprint_url_by_id_and_project(sprint.taskID)
-    end
-  end
-
-  # Uses task_to_acunote to generate a csv of tasks for each of the sprints found during initialization
-  def sprints_to_csv
-    sprint_map = {}
-    @sprints.each do |sprint|
-      sprint_map[sprint.title] =  sprint.children.map do |root|
-        task_to_acunote(root,[])
-      end.flatten
-    end
-    sprint_map
-  end
-
-  # Acunote Format:
-  # Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,
-  # Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,
-  # Duplicate,Predecessors,Successors,Version 1
-  #
-  def task_to_acunote(task, to_csv)
-    #Push the current task into acunote format
-    to_csv << task.to_acunote_csv  
-
-    #Then map it's children
-    #This is sort of an inject but map as a verb is way more intuitive 
-    if task.children.size > 0
-      to_csv << task.children.map do |child|
-        task_to_acunote(child, [])
-      end
-    end
-    to_csv.flatten
   end
 
   #Used to recursively build a tree of tasks for a particular node
@@ -250,25 +346,21 @@ class OmniTaskGroup
     end
   end
 
-
-  #Finds the child idrefs of a particular node
-  def child_refs(node)
-    if node.is_a?(Hash)
-      node['child-task'].map{|child| child['idref']}
-    else
-      node.child_refs 
-    end
+  def flat_task_list(task, include_self = true)
+    result = include_self ? [task] : []
+    result <<
+      task.children.map do |child|
+        flat_task_list(child)
+      end
+    result.flatten
   end
+  #======== / Task Creation / ==============
 
 
-  def to_s
-    sprints.each do |sprint|
-      sprint.to_s
-    end
-  end
+  #======= \ Helpers \ =====
 
-#=== Helper Find methods to parse parts of the xml document ===#
-  def find_resource(key,value)
+  def find_resource_by_id(id)
+    resources.select{|resource| resource['id'] == id}
   end
 
   def find_tasks_by_id(value)
@@ -284,15 +376,29 @@ class OmniTaskGroup
     val || []
   end
 
-#=== so we don't have to parse quite as much ===#
+  #Finds the child idrefs of a particular node
+  def child_refs(node)
+    if node.is_a?(Hash)
+      node['child-task'].map{|child| child['idref']}
+    else
+      node.child_refs 
+    end
+  end
 
   def resources
-    @resources ||= @doc['resource'][1..-1]
+     @doc['resource'][1..-1]
   end
 
   def tasks
-    @tasks ||= @doc['task']
+    @doc['task']
   end
+
+  def to_s
+    sprints
+  end
+ 
+  #======= / Helpers / =====
+
 end
 
 

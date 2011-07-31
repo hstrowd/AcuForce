@@ -14,6 +14,7 @@ require 'rubygems'
 require 'mechanize'
 require 'highline/import'
 require 'yaml'
+require 'omni_to_acunote.rb'
 
 THIS_FILE = File.symlink?(__FILE__) ? File.readlink(__FILE__) : __FILE__
 THIS_DIR = File.dirname(THIS_FILE)
@@ -119,6 +120,7 @@ end
 module AcunoteSprint
   include AcunoteBase
   PROJ_ID = 5208
+  ACUNOTE_CSV_HEADER = "Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,Duplicate,Predecessors,Successors,Version 1\r\n"
 
 
   SPRINT_URL = proc{|proj_id, sprint_id| "#{HOME_URL}/projects/#{proj_id}/sprints/#{sprint_id}"}
@@ -145,7 +147,7 @@ module AcunoteSprint
   end
 
   def find_sprint_by_name(sprint_name, proj_id = PROJ_ID)
-    sprints = get_page(SPRINT_URL.call(proj_id))
+    sprints = get_page(SPRINT_URL.call(proj_id,''))
     sprints.links_with(:text => sprint_name).first
   end
 
@@ -153,10 +155,12 @@ module AcunoteSprint
     SPRINT_URL.call(proj_id,sprint_id)
   end
 
+
+
   def upload_csv_to_sprint(raw_data, sprint_number, opts = {:proj_id => 5208})
     import_page = get_page(SPRINT_URL.call(opts[:proj_id],"#{sprint_number}/import"))
     import_form = import_page.form_with({:name => 'import_form'})
-    import_form.field_with(:id => 'data_to_import').value  += "\n"+raw_data
+    import_form.field_with(:id => 'data_to_import').value  = raw_data.to_s
     import_form.submit
   end
 
@@ -216,42 +220,20 @@ class AcuPlan
   include AcunoteWiki
   include AcunoteSprint
 
+  attr_accessor :omni_task_group
+
   def initialize
-    run_loop
+    welcome_message
   end
 
-  #Old School run loop :) 
-  #I'll make sweet param style implementation soon
-  def run_loop
-    puts "welcome to AcuPlan"
-    puts "param version comming soon!"
-    puts "what would you like to do?"
-    acunote_login
-    
-    ## This makes me smile and other cry?
-    ##This will need to be updated by quarter?
+  def create_omni_task_group
+      file_location= ask("Where is the file (Actual.xml) you'd like to use?")
+      @omni_task_group = OmniTaskGroup.new(file_location)
+  end
 
-    while true do
-      task_to_run= ask("What would you like to do?\nu - Update metaTask with file\n r - Read MetaWiki\np - Create Project\nx - Exit")
-      case task_to_run
-      when 'r'
-        task_id = ask("Task ID? -OR- blank for default (recommended)")
-        task_id = 379310 if task_id.empty?
-        save_location = ask("Where would you like to save the output? blank for STDOUT")
-        pull_task_wiki(task_id,save_location)
-      when 'u'
-        task_id = ask("Task ID? -OR- blank for default (recommended)")
-        task_id = 379310 if task_id.empty?
-        file_location= ask("Where is the file (csv) you'd like to upload?")
-        acunote_update_wiki(file_location, task_id)
-      when 'p'
-        sprint_name = ask("Name of the sprint you'd like to create?")
-        create_sprint(sprint_name)
-        find_sprint_by_name(sprint_name)
-      when 'x'
-        exit(0)
-      end
-    end
+  def welcome_message
+    puts "welcome to AcuPlan"
+    puts "you more then likely want to run create_omni_task_group now"
   end
 end
 
