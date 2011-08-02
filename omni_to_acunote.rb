@@ -4,7 +4,8 @@ require 'rubygems'
 require 'nokogiri'  #gem install nokogiri
 require 'xmlsimple'
 require 'csv'
-require 'AcuPlan.rb'
+require 'builder'
+require './AcuPlan.rb'
 
 #For now always debug
 
@@ -161,6 +162,7 @@ class OmniTaskGroup
   attr_accessor :sprints, :doc, :resources, :file_path, :raw_file, :debug
 
   OMNI_PLAN_XML_HEAD= '<?xml version="1.0" encoding="utf-8" standalone="no"?>'
+
   def initialize(file_path)
     @mech = Mechanize.new
 
@@ -254,13 +256,19 @@ class OmniTaskGroup
   #"/Users/bfeigin/Documents/Enova/OmniPlanBackups/#{name}"
   #Still in test mode
   def save_omni_plan_file(use_temp_storage=false)
-    File.open(file_path+Time.now.to_s, 'w'){|z| z.write(export_raw_file)}
+    if use_temp_storage
+      File.open(file_path+Time.now.to_s, 'w'){|z| z.write(export_raw_file)}
+    else
+      File.open(file_path, 'w'){|z| z.write(export_raw_file)}
+    end
   end
 
   #File.open('/Users/bfeigin/Documents/Enova/testing/testv2.oplx/not.xml','w'){|x| x.write('<?  xml version="1.0" encoding="utf-8" standalone="no"?>' + XmlSimple.xml_out(xml,{:RootName => 'scenario'}))}
 
   def export_raw_file
-    '<? xml version="1.0" encodin="utf-8" standalone="no"?>' + XmlSimple.xml_out(@doc,{:RootName => 'scenario'})
+    OMNI_PLAN_XML_HEAD + "\n" +
+      
+    <  + XmlSimple.xml_out(@doc,{:RootName => 'scenario'})
   end
 
   # 1 - update the task in the 'doc' with task that has the user-data

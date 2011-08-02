@@ -14,7 +14,7 @@ require 'rubygems'
 require 'mechanize'
 require 'highline/import'
 require 'yaml'
-require 'omni_to_acunote.rb'
+#require 'omni_to_acunote.rb'
 
 THIS_FILE = File.symlink?(__FILE__) ? File.readlink(__FILE__) : __FILE__
 THIS_DIR = File.dirname(THIS_FILE)
