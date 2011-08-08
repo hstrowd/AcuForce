@@ -5,7 +5,7 @@ require 'nokogiri'  #gem install nokogiri
 require 'xmlsimple'
 require 'csv'
 require 'builder'
-require './AcuPlan.rb'
+require 'AcuPlan.rb'
 
 #For now always debug
 
@@ -45,7 +45,7 @@ module AcuplanTranslator
   end
 
   def acunote_level
-    @task_level
+    task_level
   end
 
 end
@@ -56,7 +56,7 @@ class OmniTask
   attr_reader   :taskID
   attr_accessor :children, :child_refs, :raw_data
   attr_accessor :title, :task_type, :task_level, :prerequisites, :owner_ref, :owner_name, :meta_data,
-                :effort, :effort_completed, :refID
+                :effort_required, :effort_completed, :refID
   
   def initialize(raw_data, level, owner_name = nil)
     #Keep a copy of the raw data we generated the task from
@@ -72,7 +72,7 @@ class OmniTask
     @prerequisites = raw_data['prerequisite-task']
     @child_refs = (raw_data['child-task'] || []).map{|node| node['idref']}
     @owner_ref = raw_data['assignment'] && raw_data['assignment'].first['idref']
-    @effort_required = (raw_data['effort'] && raw_data['effort'].first && raw_data['effort'].first.to_i/3600) 
+    @effort_required = (raw_data['effort'] && raw_data['effort'].first && raw_data['effort'].first.to_f/3600) 
     @priority = raw_data['priority'] && raw_data['priority'].first
     @effort_completed= (raw_data['effort_done'] && raw_data['effort_done'].first && raw_data['effort_done'].first.to_i/3600) 
 
@@ -90,6 +90,12 @@ class OmniTask
           @taskID = user_data['string'].first
         end
       end
+    end
+  end
+
+  def effort_remaining
+    if effort_required && effort_completed
+        effort_required - effort_completed
     end
   end
 
@@ -122,6 +128,7 @@ class OmniTask
     @taskID && @taskID.gsub('t','')
   end
 
+
   # Acunote Format:
   # Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,
   # Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,
@@ -129,7 +136,7 @@ class OmniTask
   #
   def to_acunote_csv
      [
-      acunote_level,
+      task_level,
       @taskID, 
       title, 
       meta_data[:Tags], 
@@ -138,8 +145,8 @@ class OmniTask
       nil,
       omni_to_acunote_priority(@priority),
       nil,
-      effort,
-      remaining,
+      effort_required,
+      effort_remaining,
       nil,nil,nil, #Due Date,QA Owner,Business Owner,
       nil,nil, #Wiki,Watchers
       nil, #Depends_on (set by dependents)
@@ -158,6 +165,14 @@ end
 class OmniTaskGroup
   include AcunoteBase
   include AcunoteSprint
+
+  #Scenario
+  #top-resource
+  #resource
+  #top-task
+  #task
+  #critical-path
+  #
 
   attr_accessor :sprints, :doc, :resources, :file_path, :raw_file, :debug
 
@@ -194,7 +209,7 @@ class OmniTaskGroup
   def push_to_acunote!
     return false unless prepare_project_sprints!
     result = @sprints.all? do |sprint|
-      upload_csv_to_sprint(sprint_to_csv(sprint), sprint.taskID)
+      upload_csv_to_sprint(acunote_csv_headers + sprint_to_csv(sprint), sprint.taskID)
     end
     if result
       @sprints.all? do |sprint|
@@ -266,9 +281,18 @@ class OmniTaskGroup
   #File.open('/Users/bfeigin/Documents/Enova/testing/testv2.oplx/not.xml','w'){|x| x.write('<?  xml version="1.0" encoding="utf-8" standalone="no"?>' + XmlSimple.xml_out(xml,{:RootName => 'scenario'}))}
 
   def export_raw_file
+    xml = Builder::XmlMarkup.new
+    xml.instruct!
+    xml.scenario('xmlns' => doc['xmlns'], 'id' => doc['id']) {
+      xml.instruct!
+      xml.tag!('top-resource','idref' => doc['top-resource'].first['idref'])
+      xml.tag! 'idref' => doc['top-resource'].first['idref']
+
+    }
     OMNI_PLAN_XML_HEAD + "\n" +
-      
-    <  + XmlSimple.xml_out(@doc,{:RootName => 'scenario'})
+    X
+   # <  
+    + XmlSimple.xml_out(@doc,{:RootName => 'scenario'})
   end
 
   # 1 - update the task in the 'doc' with task that has the user-data
@@ -401,6 +425,10 @@ class OmniTaskGroup
     @doc['task']
   end
 
+  def acunote_csv_headers
+    "Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,Duplicate,Predecessors,Successors,Version 1\r\n"
+  end
+
   def to_s
     sprints
   end
@@ -408,62 +436,3 @@ class OmniTaskGroup
   #======= / Helpers / =====
 
 end
-
-
-=begin
-#TODO Prereqs will require post processing, because only acunote has master "ID" number for all tasks 
-# Omni -> Acunote
-#   Need to create the task before you can set up a dependency so might have to be two step upload
-# 
-# Acu -> Omni
-#   Need to be able to refence a task by Issue Number to UID mapping
-
-####################### CONVERSION STRAT #####################
-
-#ACUNOTE TO OMNI
-Number, Issue, val
-Description, Task, val
-Owner, Assigned, val
-Priority, Priority, acunote_to_omni_priority(val)
-Estimate, Effort, val+'h'
-Remaining, Completed (val.to_f/acu_data[Estimate].to_f) + '%'
-
-
-
-########################## OMNI TO ACUNOTE ############################
-#OmniPlan, Acunote, proc 
-
-OMNI_DAY_TO_ACUNOTE_HOUR_CONVERSION_RATE = Hash.new(5) #Default everyone to 5 hours for now
-
-
-
-ID, Level,  omni_to_acunote_level_conversion(val)
-#Task, Description, val
-#End, Due Date, Date.parse(val)
-#Effort, Estimate, val.to_i #omni_to_acu_time(val)
-#Completed, Remaining, parse_percent(val) * Estimate.to_f
-#Issue, Number, val.to_i
-#Assigned, Owner, val.split.first
-#Priority, Priority, omni_to_acunote_priority(val)
-#Task Type, Is Group, val ~= /Group/
-
-
-
-
-
-#META DATA ONLY
-Start
-Duration
-Task Cost
-Planned Start
-Planned End
-Notes
-
-##################### END CONVERSION STRAT ################
-  def to_s
-    sprints.each do |sprint|
-      sprint.to_s
-    end
-  end
-
-=end

@@ -9,6 +9,12 @@ gem 'sqlite3'
 
 # Use unicorn as the web server
 # gem 'unicorn'
+gem 'nokogiri'
+gem 'xml-simple'
+#gem 'csv'
+gem 'mechanize'
+gem 'highline'
+
 
 # Deploy with Capistrano
 # gem 'capistrano'
