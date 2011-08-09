@@ -99,6 +99,14 @@ class OmniTask
     end
   end
 
+  def effort_required
+    if @effort_required.to_i == @effort_required
+      @effort_required.to_i
+    else
+      @effort_required
+    end
+  end
+
 
   # Checks that we don't already have a TaskID assigned
   # Builds or adds a new key value pair to the user-data section of the raw data hash

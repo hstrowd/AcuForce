@@ -156,9 +156,8 @@ module AcunoteSprint
   end
 
 
-
   def upload_csv_to_sprint(raw_data, sprint_number, opts = {:proj_id => 5208})
-    import_page = get_page(SPRINT_URL.call(opts[:proj_id],"#{sprint_number}/import"))
+    import_page = get_page(SPRINT_URL.call(opts[:proj_id],sprint_number)+"/import"))
     import_form = import_page.form_with({:name => 'import_form'})
     import_form.field_with(:id => 'data_to_import').value  = raw_data.to_s
     import_form.submit
