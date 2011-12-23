@@ -4,7 +4,7 @@
 # -*- encoding: utf-8 -*-
 
 Gem::Specification.new do |s|
-  s.name = %q{AcuForce2}
+  s.name = %q{AcuForce}
   s.version = "0.1.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
@@ -24,7 +24,7 @@ Provides an API for the following actions:
     "README.rdoc"
   ]
   s.files = [
-    "AcuForce2.gemspec",
+    "AcuForce.gemspec",
     "Gemfile",
     "LICENSE.txt",
     "README.rdoc",
@@ -33,7 +33,7 @@ Provides an API for the following actions:
     "lib/acuforce.rb",
     "spec/spec_helper.rb"
   ]
-  s.homepage = %q{http://github.com/hstrowd/AcuForce2}
+  s.homepage = %q{http://github.com/hstrowd/AcuForce}
   s.licenses = ["MIT"]
   s.require_paths = ["lib"]
   s.rubygems_version = %q{1.6.2}
