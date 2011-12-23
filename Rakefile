@@ -14,8 +14,8 @@ require 'rake'
 require 'jeweler'
 Jeweler::Tasks.new do |gem|
   # gem is a Gem::Specification... see http://docs.rubygems.org/read/chapter/20 for more options
-  gem.name = "AcuForce2"
-  gem.homepage = "http://github.com/hstrowd/AcuForce2"
+  gem.name = "AcuForce"
+  gem.homepage = "http://github.com/hstrowd/AcuForce"
   gem.license = "MIT"
   gem.summary = %Q{Client API for performing actions on an Acunote site.}
   gem.description = %Q{
@@ -50,7 +50,7 @@ Rake::RDocTask.new do |rdoc|
   version = File.exist?('VERSION') ? File.read('VERSION') : ""
 
   rdoc.rdoc_dir = 'rdoc'
-  rdoc.title = "AcuForce2 #{version}"
+  rdoc.title = "AcuForce #{version}"
   rdoc.rdoc_files.include('README*')
   rdoc.rdoc_files.include('lib/**/*.rb')
 end
