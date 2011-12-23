@@ -31,7 +31,7 @@ class AcunoteSprint
     "#{acu_conn.home_url}/projects/#{proj_id}/sprints/#{sprint_id}"
   end
 
-  def self.create(sprint_name, opts = {})
+  def self.create(proj_id, sprint_name, opts = {})
     opts[:sprint_type] ||= 'Backlog'
     opts[:start_date]  ||= Date.today
     opts[:end_date]    ||= opts[:start_date] + 365
@@ -41,7 +41,7 @@ class AcunoteSprint
       return false
     end
 
-    sprint_page = acu_conn.get_page(url(opts[:proj_id], 'new'))
+    sprint_page = acu_conn.get_page(url(proj_id, 'new'))
     sprint_form = sprint_page.forms_with({:name => 'sprint_new_dialog'}).first
 
     if opts[:sprint_type] == 'Backlog'
