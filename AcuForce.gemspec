@@ -4,14 +4,21 @@
 # -*- encoding: utf-8 -*-
 
 Gem::Specification.new do |s|
-  s.name = "AcuForce"
+  s.name = %q{AcuForce}
   s.version = "0.1.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Harrison Strowd"]
-  s.date = "2011-12-23"
-  s.description = "\nProvides an API for the following actions:\n* Logging in and Logging out\n* Creating a sprint\n* Finding a sprint\n* Uploading tasks to a sprint from a CSV file\n* Exporting tasks in a sprint to a CSV file\n"
-  s.email = "hstrowd@gmail.com"
+  s.date = %q{2011-12-23}
+  s.description = %q{
+Provides an API for the following actions:
+* Logging in and Logging out
+* Creating a sprint
+* Finding a sprint
+* Uploading tasks to a sprint from a CSV file
+* Exporting tasks in a sprint to a CSV file
+}
+  s.email = %q{hstrowd@gmail.com}
   s.extra_rdoc_files = [
     "LICENSE.txt",
     "README.rdoc"
@@ -26,11 +33,11 @@ Gem::Specification.new do |s|
     "lib/acuforce.rb",
     "spec/spec_helper.rb"
   ]
-  s.homepage = "http://github.com/hstrowd/AcuForce"
+  s.homepage = %q{http://github.com/hstrowd/AcuForce}
   s.licenses = ["MIT"]
   s.require_paths = ["lib"]
-  s.rubygems_version = "1.8.13"
-  s.summary = "Client API for performing actions on an Acunote site."
+  s.rubygems_version = %q{1.6.2}
+  s.summary = %q{Client API for performing actions on an Acunote site.}
 
   if s.respond_to? :specification_version then
     s.specification_version = 3
