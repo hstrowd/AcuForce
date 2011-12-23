@@ -14,29 +14,34 @@ require 'bundler'
 require 'rubygems'
 require 'mechanize'
 require 'yaml'
+require 'singleton'
 
 THIS_FILE = File.symlink?(__FILE__) ? File.readlink(__FILE__) : __FILE__ unless defined? THIS_FILE
 THIS_DIR = File.dirname(THIS_FILE) unless defined? THIS_DIR
 DEBUG = true unless defined? DEBUG
 
-module AcunoteSprint
+class AcunoteSprint
   ACUNOTE_CSV_HEADER = "Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,Duplicate,Predecessors,Successors,Version 1\r\n" unless defined? ACUNOTE_CSV_HEADER
 
-  def sprint_url(proj_id, sprint_id)
-    "#{self.home_url}/projects/#{proj_id}/sprints/#{sprint_id}"
+  def self.acu_conn
+    AcunoteConnection.instance
   end
 
-  def create_sprint(sprint_name, opts = {})
+  def self.url(proj_id, sprint_id)
+    "#{acu_conn.home_url}/projects/#{proj_id}/sprints/#{sprint_id}"
+  end
+
+  def self.create(sprint_name, opts = {})
     opts[:sprint_type] ||= 'Backlog'
     opts[:start_date]  ||= Date.today
     opts[:end_date]    ||= opts[:start_date] + 365
 
-    unless logged_in
+    unless acu_conn.logged_in
       STDERR.puts "Must login before creating a sprint." if DEBUG
       return false
     end
 
-    sprint_page = get_page(sprint_url(opts[:proj_id], 'new'))
+    sprint_page = acu_conn.get_page(url(opts[:proj_id], 'new'))
     sprint_form = sprint_page.forms_with({:name => 'sprint_new_dialog'}).first
 
     if opts[:sprint_type] == 'Backlog'
@@ -51,48 +56,54 @@ module AcunoteSprint
     sprint_form.submit
   end
 
-  def find_sprint_id_by_name(proj_id, sprint_name)
+  def self.find_id_by_name(proj_id, sprint_name)
     link = find_sprint_by_name(proj_id, sprint_name)
     if(link.uri.to_s =~ /\/sprints\/([0-9]*)/)
       $1
     end
   end
 
-  def find_sprint_by_name(proj_id, sprint_name)
-    sprints = get_page(sprint_url(proj_id, ''))
-    sprints.links_with(:text => sprint_name).first
+  def self.find_by_name(proj_id, sprint_name)
+    sprints = acu_conn.get_page(url(proj_id, ''))
+    sprints.links_with(:text => sprint_name).first if sprints
   end
 
-  def upload_csv_to_sprint(raw_data, proj_id, sprint_id)
-    import_page = get_page(sprint_url(opts[:proj_id],sprint_id)+"/import")
+  def self.upload_csv(raw_data, proj_id, sprint_id)
+    import_page = acu_conn.get_page(url(opts[:proj_id],sprint_id)+"/import")
     import_form = import_page.form_with({:name => 'import_form'})
     import_form.field_with(:id => 'data_to_import').value  = raw_data.to_s
     import_form.submit
   end
 
-  def export_csv_from_sprint(proj_id, sprint_id)
-    get_page(sprint_url(proj_id,sprint_id) + '/export').body
+  def self.export_csv(proj_id, sprint_id)
+    acu_conn.get_page(url(proj_id,sprint_id) + '/export').body
   end
 end
 
-# TODO: Make this a singleton.
-class Acuforce
-  include AcunoteWiki
-  include AcunoteSprint
+# A singleton class to contain the acunote session information.
+class AcunoteConnection
+  include Singleton
 
-  attr_accessor :home_url, :username
+  attr_accessor :username
+  attr_writer :home_url
   attr_reader :logged_in, :mech
 
-  def initialize(home_url, username)
-    @home_url = home_url
-    @username = username
+  def initialize()
     @mech ||= Mechanize.new
   end
 
-  SESSION_FILE = "#{THIS_DIR}/acunote.session" unless defined? SESSION_FILE
+  # For lack of a better place, put sessions in tmp
+  SESSION_DIR = "/tmp" unless defined? SESSION_DIR
+  SESSION_FILE = "#{SESSION_DIR}/acunote.session" unless defined? SESSION_FILE
 
   LOGIN_FIELDS = ['login[username]', 'login[password]'] unless defined? LOGIN_FIELDS
   LOGIN_FORM_NAME = "login_form" unless defined? LOGIN_FORM_NAME
+
+  # The home_url must be set after the instance is first retrieved.
+  def home_url
+    raise "home_url not set" unless @home_url
+    @home_url
+  end
 
   def login_url
     "#{self.home_url}/login"
@@ -102,14 +113,15 @@ class Acuforce
     "#{self.home_url}/login/logout"
   end
 
-  def login(password, force = false)
-    self.logged_in = nil if force
+  def login(username, password, force = false)
+    @logged_in = nil if force
     return true if logged_in
 
     #Going to assume the session is good to save time here. The session will be
     #discarded and a force login will be performed if get_page fails.
     if !force && File.exists?(SESSION_FILE) && ! File.zero?(SESSION_FILE) && mech.cookie_jar.load(SESSION_FILE)
       STDERR.puts "Loaded session file" if DEBUG
+      @username = username
       @logged_in = true
     end
 
@@ -132,6 +144,7 @@ class Acuforce
 
       #serialize session and save for later reuse
       mech.cookie_jar.save_as(SESSION_FILE)
+      @username = username
       @logged_in = true
     end
   end
@@ -141,6 +154,7 @@ class Acuforce
       File.delete(SESSION_FILE)
     end
     get_page(logout_url)
+    @username = nil
     @logged_in = false
   end
 
@@ -174,6 +188,4 @@ class Acuforce
       puts e if DEBUG
     end
   end
-  private :get_page
-
 end

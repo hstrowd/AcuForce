@@ -17,8 +17,15 @@ Jeweler::Tasks.new do |gem|
   gem.name = "AcuForce2"
   gem.homepage = "http://github.com/hstrowd/AcuForce2"
   gem.license = "MIT"
-  gem.summary = %Q{TODO: one-line summary of your gem}
-  gem.description = %Q{TODO: longer description of your gem}
+  gem.summary = %Q{Client API for performing actions on an Acunote site.}
+  gem.description = %Q{
+Provides an API for the following actions:
+* Logging in and Logging out
+* Creating a sprint
+* Finding a sprint
+* Uploading tasks to a sprint from a CSV file
+* Exporting tasks in a sprint to a CSV file
+}
   gem.email = "hstrowd@gmail.com"
   gem.authors = ["Harrison Strowd"]
   # dependencies defined in Gemfile
