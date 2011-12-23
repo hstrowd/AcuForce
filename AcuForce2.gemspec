@@ -24,6 +24,7 @@ Provides an API for the following actions:
     "README.rdoc"
   ]
   s.files = [
+    "AcuForce2.gemspec",
     "Gemfile",
     "LICENSE.txt",
     "README.rdoc",
