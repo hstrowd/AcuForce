@@ -58,8 +58,8 @@ class AcunoteSprint
     sprints.links_with(:text => name).first if sprints
   end
 
-  def self.upload_csv(raw_data, proj_id, sprint_id)
-    import_page = acu_conn.get_page(url(opts[:proj_id],sprint_id)+"/import")
+  def self.upload_csv(proj_id, sprint_id, raw_data)
+    import_page = acu_conn.get_page(url(proj_id,sprint_id)+"/import")
     import_form = import_page.form_with({:name => 'import_form'})
     import_form.field_with(:id => 'data_to_import').value  = raw_data.to_s
     import_form.submit
