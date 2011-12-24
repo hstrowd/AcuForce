@@ -4,7 +4,7 @@
 # -*- encoding: utf-8 -*-
 
 Gem::Specification.new do |s|
-  s.name = %q{AcuForce}
+  s.name = %q{acuforce}
   s.version = "0.1.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
@@ -24,7 +24,7 @@ Provides an API for the following actions:
     "README.rdoc"
   ]
   s.files = [
-    "AcuForce.gemspec",
+    "acuforce.gemspec",
     "Gemfile",
     "LICENSE.txt",
     "README.rdoc",
