@@ -29,6 +29,7 @@ Provides an API for the following actions:
     "README.rdoc",
     "Rakefile",
     "VERSION",
+    "acuforce.gemspec",
     "lib/acuforce.rb",
     "lib/acunote_connection.rb",
     "lib/acunote_project.rb",
