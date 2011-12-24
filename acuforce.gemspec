@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{acuforce}
-  s.version = "0.1.0"
+  s.version = "0.2.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Harrison Strowd"]
-  s.date = %q{2011-12-23}
+  s.date = %q{2011-12-24}
   s.description = %q{
 Provides an API for the following actions:
 * Logging in and Logging out
@@ -24,13 +24,16 @@ Provides an API for the following actions:
     "README.rdoc"
   ]
   s.files = [
-    "acuforce.gemspec",
     "Gemfile",
     "LICENSE.txt",
     "README.rdoc",
     "Rakefile",
     "VERSION",
     "lib/acuforce.rb",
+    "lib/acunote_connection.rb",
+    "lib/acunote_project.rb",
+    "lib/acunote_sprint.rb",
+    "spec/acuforce_spec.rb",
     "spec/spec_helper.rb"
   ]
   s.homepage = %q{http://github.com/hstrowd/AcuForce}
