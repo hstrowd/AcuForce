@@ -11,7 +11,7 @@ class AcunoteProject
   end
 
   def self.find_id_by_name(name)
-    link = find_by_name(proj_id, sprint_name)
+    link = find_by_name(name)
     if(link.uri.to_s =~ /projects\/([0-9]*)\/sprints/)
       $1
     end
