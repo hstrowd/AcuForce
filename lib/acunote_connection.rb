@@ -69,6 +69,7 @@ class AcunoteConnection
       @username = username
       @logged_in = true
     end
+    true
   end
 
   def logout()

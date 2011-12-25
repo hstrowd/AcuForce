@@ -47,7 +47,7 @@ class AcunoteSprint
   # NAME can be a literal string or a regex.
   def self.find_id_by_name(proj_id, name)
     link = find_by_name(proj_id, name)
-    if(link.uri.to_s =~ /\/sprints\/([0-9]*)/)
+    if(link && link.uri.to_s =~ /\/sprints\/([0-9]*)/)
       $1
     end
   end
