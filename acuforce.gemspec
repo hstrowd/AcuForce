@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{acuforce}
-  s.version = "0.2.3"
+  s.version = "0.3.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Harrison Strowd"]
-  s.date = %q{2011-12-24}
+  s.date = %q{2012-01-20}
   s.description = %q{
 Provides an API for the following actions:
 * Logging in and Logging out
