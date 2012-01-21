@@ -2,8 +2,6 @@ require 'acunote_connection'
 
 # API for accessing Acunote projects.
 class AcunoteSprint
-  ACUNOTE_CSV_HEADER = "Level,Number,Description,Tags,Owner,Status,Resolution,Priority,Severity,Estimate,Remaining,Due Date,QA Owner,Business Owner,Wiki,Watchers,Related,Duplicate,Predecessors,Successors,Version 1\r\n" unless defined? ACUNOTE_CSV_HEADER
-
   def self.acu_conn
     AcunoteConnection.instance
   end

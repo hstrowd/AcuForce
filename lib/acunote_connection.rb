@@ -6,7 +6,6 @@ require 'singleton'
 class AcunoteConnection
   include Singleton
 
-  attr_accessor :username
   attr_writer :home_url
   attr_reader :logged_in, :mech
 
@@ -35,17 +34,22 @@ class AcunoteConnection
     "#{self.home_url}/login/logout"
   end
 
+  def load_session
+    if File.exists?(SESSION_FILE) && ! File.zero?(SESSION_FILE) && mech.cookie_jar.load(SESSION_FILE)
+      @logged_in = true
+    end
+  end
+
+  def clear_session
+    File.delete(SESSION_FILE) if File.exists?(SESSION_FILE)
+  end
+
   def login(username, password, force = false)
     @logged_in = nil if force
     return true if logged_in
-
-    #Going to assume the session is good to save time here. The session will be
-    #discarded and a force login will be performed if get_page fails.
-    if !force && File.exists?(SESSION_FILE) && ! File.zero?(SESSION_FILE) && mech.cookie_jar.load(SESSION_FILE)
-      STDERR.puts "Loaded session file" if DEBUG
-      @username = username
-      @logged_in = true
-    end
+    
+    # Try to load an existing session.
+    load_session unless force
 
     unless logged_in
 
@@ -66,7 +70,6 @@ class AcunoteConnection
 
       #serialize session and save for later reuse
       mech.cookie_jar.save_as(SESSION_FILE)
-      @username = username
       @logged_in = true
     end
     true
@@ -77,7 +80,6 @@ class AcunoteConnection
       File.delete(SESSION_FILE)
     end
     get_page(logout_url)
-    @username = nil
     @logged_in = false
   end
 
