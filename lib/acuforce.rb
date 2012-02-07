@@ -10,6 +10,7 @@
 #Major modifications to transition from OmniPlan to Accunote
 #Notes there are a few gems required see directly below :)
 
+require 'psych'
 require 'rubygems'
 require 'acunote_connection'
 require 'acunote_project'
