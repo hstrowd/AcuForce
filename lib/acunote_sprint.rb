@@ -56,6 +56,25 @@ class AcunoteSprint
     sprints.links_with(:text => name).first if sprints
   end
 
+  # Note: This is extremely brittle to the structure of the acunote sprint page, but I 
+  # couldn't find any other way to do it. 
+  def self.find_task_id_by_name(proj_id, sprint_id, task_name)
+    sprint_page = acu_conn.get_page(url(proj_id,sprint_id)+'/show')
+    all_tasks = sprint_page.parser.search('span.descr_edit')
+    all_tasks.select { |task_node| task_node.text.match(task_name) }
+    if all_tasks.size == 1
+      prop = all_tasks[0].search('span.task_properties')[0]
+      prop_id_str = prop.attribute('id').text
+      if prop_id_str =~ /^task_properties_([0-9]*)$/
+        $1
+      else
+        nil
+      end
+    else
+      nil
+    end
+  end
+
   def self.upload_csv(proj_id, sprint_id, raw_data)
     import_page = acu_conn.get_page(url(proj_id,sprint_id)+"/import")
     import_form = import_page.form_with({:name => 'import_form'})

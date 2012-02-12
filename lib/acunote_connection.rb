@@ -19,6 +19,7 @@ class AcunoteConnection
 
   LOGIN_FIELDS = ['login[username]', 'login[password]'] unless defined? LOGIN_FIELDS
   LOGIN_FORM_NAME = "login_form" unless defined? LOGIN_FORM_NAME
+  DEBUG = false unless defined? DEBUG
 
   # The home_url must be set after the instance is first retrieved.
   def home_url
