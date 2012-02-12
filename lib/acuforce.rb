@@ -15,5 +15,6 @@ require 'rubygems'
 require 'acunote_connection'
 require 'acunote_project'
 require 'acunote_sprint'
+require 'acunote_task'
 
 DEBUG = true unless defined? DEBUG
