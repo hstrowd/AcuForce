@@ -1,6 +1,6 @@
 require 'acunote_connection'
 
-# API for accessing Acunote projects.
+# API for accessing Acunote sprints.
 class AcunoteSprint
   def self.acu_conn
     AcunoteConnection.instance
@@ -61,12 +61,22 @@ class AcunoteSprint
   def self.find_task_id_by_name(proj_id, sprint_id, task_name)
     sprint_page = acu_conn.get_page(url(proj_id,sprint_id)+'/show')
     all_tasks = sprint_page.parser.search('span.descr_edit')
-    all_tasks.select { |task_node| task_node.text.match(task_name) }
-    if all_tasks.size == 1
-      prop = all_tasks[0].search('span.task_properties')[0]
+    matches = all_tasks.select { |task_node| task_node.text.match(task_name) }
+    STDOUT.puts("Found #{all_tasks.size} tasks in this sprint. Out of those #{matches.size} matched the task name provided.") if DEBUG
+    if matches.size == 1
+      STDOUT.puts("Found match: #{matches[0]}") if DEBUG
+      prop = matches[0].search('span.task_properties')[0]
       prop_id_str = prop.attribute('id').text
-      if prop_id_str =~ /^task_properties_([0-9]*)$/
-        $1
+      STDOUT.puts("Found a properties span with: #{prop_id_str}") if DEBUG
+      if prop_id_str =~ /^task_propertires_([0-9]*)$/
+        task_prop = $1
+        links = sprint_page.links_with(:id => "issue_number_for_#{task_prop}")
+        STDOUT.puts "Found the following links matching the property for this task: #{links.inspect}" if DEBUG 
+        if links.size == 1
+          links[0].text
+        else
+          nil
+        end
       else
         nil
       end
